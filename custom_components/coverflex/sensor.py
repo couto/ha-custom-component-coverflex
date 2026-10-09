@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any
 
 from babel.dates import format_date as babel_format_date
@@ -39,6 +40,19 @@ def _format_transaction_date(dt_obj, lang: str) -> str:
     return f"{local_dt.day:02d} {month} - {local_dt.strftime('%H:%M')}"
 
 
+def _load_babel_locale(lang: str) -> None:
+    """Load babel's locale data for lang.
+
+    babel opens its data files the first time it formats a date in a locale,
+    which is a blocking call. Doing it here, in an executor, fills babel's
+    cache, so the sensor's later calls in the event loop do not touch disk.
+    """
+    try:
+        babel_format_date(date.today(), format="MMM", locale=lang)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -46,6 +60,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up Coverflex sensors from a config entry."""
     coordinator: CoverflexCoordinator = hass.data[DOMAIN][entry.entry_id]
+
+    await hass.async_add_executor_job(_load_babel_locale, hass.config.language)
 
     async_add_entities(
         CoverflexPocketSensor(coordinator, entry, pocket)
